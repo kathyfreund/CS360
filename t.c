@@ -4,83 +4,173 @@
 
 PROC proc[NPROC], *running, *freeList, *readyQueue, *sleepList;
 
+int ksleep(int event)
+{
+  printf("proc %d sleep on %d: ", running->pid, event);
+  running->event = event;         // sleep event value
+  running->status = SLEEP;        // status = SLEEP
+  enqueue(&sleepList, running);   // enter into sleepList
+  //printsleepList();
+  tswitch();                      // switch process to give up CPU 
+}
+
+
+
+
+
+
+//****************************TO DO - KWAKEUP
+int kwakeup(int event)
+{
+	PROC *p, *q = 0;
+	
+	while(p = dequeue(&sleepList)) //go through sleepList/ take it out
+	{
+		if(p->event == event) //if in this event, WAKE UP
+		{
+			p->status = READY;
+			enqueue(&readyQueue, p);
+			printf("Waking up %d\n", p->pid);
+			continue;
+		}
+		enqueue(&q, p); //not in event
+	}
+	sleepList = q; //put back all PROCS that were not woken up in this event
+}
+
+
 int do_switch()
 {
-   printf("proc %d switching task\n", running->pid);
-   tswitch();
-   printf("proc %d resuming\n", running->pid);
+	printf("proc %d switching task\n", running->pid);
+ 	tswitch();
+   	printf("proc %d resuming\n", running->pid);
 }
 
 int do_kfork()
 {
-   int child = kfork();
-   if (child < 0)
-      printf("kfork failed\n");
-   else{
-      printf("proc %d kforked a child = %d\n", running->pid, child); 
-      printList("readyQueue", readyQueue);
-   }
-   return child;
+   	int child = kfork();
+   	if (child < 0)
+	{
+      		printf("kfork failed\n");
+	}
+   	else
+	{
+      		printf("proc %d kforked a child = %d\n", running->pid, child); 
+      		printList("readyQueue", readyQueue);
+   	}
+   	return child;
 }
 
-char *gasp[NPROC]={
-  "Oh! I'm dying ....", 
-  "Oh! You're killing me ....",
-  "Oh! I'm a goner ....", 
-  "Oh! I'm mortally wounded ....",
-};
 
-int kexit(){
- 
-   printf("*************************************\n"); 
-   printf("proc %d: %s\n", running->pid, gasp[running->pid % 4]);
-   printf("*************************************\n");
-   running->status = FREE;
-   running->priority = 0;
 
-// ASSIGNMENT 3: add YOUR CODE to delete running PROC from parent's child list
 
-   enqueue(&freeList, running);     // enter running into freeList
-   printList("freeList", freeList); // show freeList
+//*********************************TO DO - KEXIT
+int kexit()
+{
+	int i;
+  	PROC *p;
+  	printf("proc %d in kexit()\n", running->pid);
+  	if (running->pid==1)
+	{
+	      printf("P1 never dies\n");
+	      return 0;
+	}
 
-   tswitch();
+
+	running->exitCode = running->pid; //record pid as exitStatus
+	running->status = ZOMBIE; //become a ZOMBIE
+
+	for(i = 1; i < NPROC; i++) //send children
+	{
+		p = &proc[i];
+		if (p->status != FREE && p->ppid == running->pid)
+		{
+			p->ppid = 1;
+			p->parent = &proc[1];
+		}
+	}
+
+	kwakeup(running->parent); //wakeup!
+	kwakeup(&proc[1]);
+   	tswitch();
 }
 
 int do_exit()
 {
-  if (running->pid==1){
-    printf("P1 never dies\n");
-    return -1;
-  }
-  kexit();    // journey of no return 
+	kexit();    // journey of no return 
 }
+
+
+
+
+
+//*********************************TO DO - KWAIT
+
+int kwait(int *status)
+{
+	PROC *p;
+	int i, n, f = 0;
+	n = NPROC;
+ 	while(1)
+	{
+		for (i = 0; i < n; i++)
+		{
+			p = &proc[i];
+			if (p->ppid == running->pid && p->status != FREE)
+			{
+				f = 1;
+				if (p->status == ZOMBIE) //if we found a zombie child
+				{
+					//remove child from list
+        				*status = p->exitCode;
+					enqueue(freeList, p); //add to freeList
+					p->status = FREE; 
+					printList("freeList", freeList);
+        				return (p->pid);
+     				}
+			}
+		}
+		if(!f)
+		{		
+			return(-1);
+		}	
+     		ksleep(running->pid); 
+  	}
+}
+
+int do_wait()
+{
+  int pid, status;
+  pid = kwait(&status);
+  printf("proc %d waited for a ZOMBIE child %d status=%d\n", 
+         running->pid, pid, status);
+}
+
 
 int body()
 {
   int c, CR;
-  printf("proc %d starts from body()\n", running->pid);
+  printf("proc %d resume to body()\n", running->pid);
   while(1){
     printf("***************************************\n");
-    printf("proc %d running: Parent = %d\n", running->pid, running->ppid);
-
- // ASSIGNMENT 3: add YOUR CODE to show child list
-/*
-	printList("freelist ", freeList);
-	printList("readyQueue", readyQueue);
-	printList("sleepList ", sleepList);
-*/
-
-    printf("input a char [ f-fork | s-switch | q-quit | x-exit ] : ");
-    c = getchar(); CR=getchar(); 
+    printf("proc %d running: Parent=%d  ", running->pid, running->ppid);
+    //showChild(); // show child list of running PROC
+    printf("enter a key [f|s|q|w] : "); // ADD 'w' command
+    c = getchar(); CR=getchar();
+     
     switch(c){
       case 'f': do_kfork();     break;
       case 's': do_switch();    break;
       case 'q': do_exit();      break;
-	case 'x': 		return;
+      case 'w': do_wait();      break;     // implement wait() operation
+      default :                 break;  
     }
   }
 }
     
+
+
+
 /*******************************************************
   kfork() creates a child porc; returns child pid.
   When scheduled to run, child PROC resumes to body();
@@ -108,25 +198,23 @@ int kfork()
 
   p->kstack[SSIZE-1] = (int)body;
   p->saved_sp = &(p->kstack[SSIZE - 9]); 
-  
-/**************** ASSIGNMENT 3  ********************
-  add YOUR code to implement the PROC tree as a BINARY tree
-  enter_child(running, p);
-****************************************************/
-
 
   enqueue(&readyQueue, p);
   return p->pid;
 }
 
+
+
 int init()
 {
-  int i;
+  int i; 
+  PROC *p;
   for (i = 0; i < NPROC; i++){
-    proc[i].pid = i; 
-    proc[i].status = FREE;
-    proc[i].priority = 0;
-    proc[i].next = (PROC *)&proc[(i+1)];
+    p = &proc[i];
+    p->pid = i; 
+    p->status = FREE;
+    p->priority = 0;
+    p->next = p + 1;
   }
   proc[NPROC-1].next = 0;
  
@@ -135,20 +223,18 @@ int init()
   sleepList = 0;
 
   // create P0 as the initial running process
-  running = dequeue(&freeList);
-  running->status = READY;
-  running->priority = 0;  
-
-  running->child = 0;  
-  running->sibling = 0;  
-  running->parent = running;
-
-  printf("init complete: P0 running\n"); 
+  p = running = dequeue(&freeList);
+  p->status = READY;
+  p->priority = 0;
+  p->child = 0;
+  p->sibling = 0;
+  p->parent = p;
   printList("freeList", freeList);
+  printf("init complete: P0 running\n"); 
 }
 
 /*************** main() ***************/
-/*
+
 main()
 {
    printf("\nWelcome to 360 Multitasking System\n");
@@ -158,23 +244,8 @@ main()
      tswitch();
    printf("All dead. Happy ending\n");
 }
-*/
 
-int main()
-{
-  int i;
-  PROC *p;
-  readyQueue = 0;
 
-  for (i=0; i < NPROC; i++){
-    p = &proc[i];
-    p->pid = i;
-    p->priority = rand() % 10;
-    printf("pid=%d priority=%d\n", p->pid, p->priority);
-    enqueue(&readyQueue, p);
-    printList("readyQ", readyQueue);
-  }
-}
 
 /*********** scheduler *************/
 int scheduler()
