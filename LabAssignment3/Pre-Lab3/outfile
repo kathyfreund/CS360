@@ -1,0 +1,18 @@
+pid=0 priority=3
+readyQ = [0 3] -> END
+pid=1 priority=6
+readyQ = [1 6] -> [0 3] -> END
+pid=2 priority=7
+readyQ = [2 7] -> [1 6] -> [0 3] -> END
+pid=3 priority=5
+readyQ = [2 7] -> [1 6] -> [3 5] -> [0 3] -> END
+pid=4 priority=3
+readyQ = [2 7] -> [1 6] -> [3 5] -> [0 3] -> [4 3] -> END
+pid=5 priority=5
+readyQ = [2 7] -> [1 6] -> [3 5] -> [5 5] -> [0 3] -> [4 3] -> END
+pid=6 priority=6
+readyQ = [2 7] -> [1 6] -> [6 6] -> [3 5] -> [5 5] -> [0 3] -> [4 3] -> END
+pid=7 priority=2
+readyQ = [2 7] -> [1 6] -> [6 6] -> [3 5] -> [5 5] -> [0 3] -> [4 3] -> [7 2] -> END
+pid=8 priority=9
+readyQ = [8 9] -> [2 7] -> [1 6] -> [6 6] -> [3 5] -> [5 5] -> [0 3] -> [4 3] -> [7 2] -> END
